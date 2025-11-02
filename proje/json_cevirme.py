@@ -103,20 +103,22 @@ def pdf_isleyici_tam(pdf_path, cikti_jsonl_yolu):
 # ANA AKIŞ
 # ==========================
 if __name__ == "__main__":
+    start_time = time()
+    
     os.makedirs(CIKTI_KLASORU, exist_ok=True)
     os.makedirs(KAYNAK_KLASORU, exist_ok=True)
 
     pdf_dosyalari = [f for f in os.listdir(KAYNAK_KLASORU) if f.lower().endswith(".pdf")]
 
     if not pdf_dosyalari:
-        print(f"UYARI: '{KAYNAK_KLASORU}' klasöründe hiç PDF dosyası bulunamadı. Lütfen PDF'leri bu klasöre atın.")
+        print(f"UYARI: '{KAYNAK_KLASORU}' klasöründe hiç PDF dosyası bulunamadı.")
     else:
         for pdf_dosya in pdf_dosyalari:
             pdf_yolu = os.path.join(KAYNAK_KLASORU, pdf_dosya)
-            # Çıktı formatı: Dosya Adı.jsonl
             jsonl_yolu = os.path.join(CIKTI_KLASORU, pdf_dosya.replace(".pdf", ".jsonl", 1))
-            pdf_isleyici_basit(pdf_yolu, jsonl_yolu)
+            pdf_isleyici_tam(pdf_yolu, jsonl_yolu)
             
-        print("---")
-        print("Tüm PDF'ler işlendi. İlk Aşama Tamamlandı! 🔥")
-        print(f"Temiz veriler '{CIKTI_KLASORU}' klasöründe seni bekliyor.")
+    end_time = time()
+    print("---")
+    print("Tüm PDF'ler işlendi. İlk Aşama Tamamlandı! 🔥")
+    print(f"Toplam süre: {end_time - start_time:.2f} saniye.")

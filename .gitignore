@@ -130,7 +130,7 @@ build/
 # .cache/pip
 
 # Project-specific generated outputs (uncomment to ignore)
-json_cikti/
+
 proje/pdfler/
 
 

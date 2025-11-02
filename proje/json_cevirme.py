@@ -1,93 +1,95 @@
-import fitz # PyMuPDF
-import json
 import os
-import re
-import sys
+import json
+import spacy
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.ensemble import IsolationForest
 
-# ====== AYARLAR ======
-KAYNAK_KLASORU = "pdfler"  # PDF dosyalarını buraya at
-CIKTI_KLASORU = "json_cikti" # Temiz JSONL dosyaları buraya çıkacak
-# ---------------------
+# ==========================
+# AYARLAR
+# ==========================
+GIRIS_KLASORU = "json_cikti"   # PDF'lerden çıkan .jsonl dosyalarının bulunduğu klasör
+CIKTI_KLASORU = "clean_data"   # Temizlenmiş verilerin kaydedileceği klasör
+os.makedirs(CIKTI_KLASORU, exist_ok=True)
 
-def metin_temizle(metin):
-    """
-    AI eğitimi için kritik olan satır sonu ve tireleme hatalarını düzeltir
-    ve genel temizliği yapar.
-    """
-    
-    # 1. Hatalı bölünen kelimeleri birleştirme (Örn: 'odevim-\niz' -> 'odevimiz')
-    # Satır sonundaki tireyi ve yeni satırı kaldırır, kelimeleri birleştirir.
-    metin = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', metin)
-    
-    # 2. Genel satır sonlarını ve fazla boşlukları temizleme
-    metin = metin.replace('\n', ' ').replace('\r', '')
-    
-    # 3. Birden fazla boşluğu tek boşluğa indirgeme
-    metin = re.sub(r'\s+', ' ', metin).strip()
-    
-    return metin
-
-def pdf_isleyici_basit(pdf_path, cikti_jsonl_yolu):
-    """PDF dosyasını işler, SADECE seçilebilir metni çeker ve temiz JSONL çıktısı verir."""
-    
-    try:
-        doc = fitz.open(pdf_path)
-        temizlenmis_bloklar = []
-        
-        print(f"'{os.path.basename(pdf_path)}' işleniyor... Toplam {doc.page_count} sayfa.")
-
-        for page_num in range(doc.page_count):
-            page = doc.load_page(page_num)
-            
-            # SADECE Seçilebilir metin çıkarma
-            metin = page.get_text("text") 
-            
-            # Metni temizle
-            temiz_metin = metin_temizle(metin)
-            
-            if len(temiz_metin) < 10:
-                # Metin yoksa veya çok azsa (büyük ihtimalle taranmış/boş sayfa) atla.
-                print(f"   -> Sayfa {page_num+1}: Metin çok az/yok. Atlanıyor.")
-                continue
-
-            # Veriyi AI eğitimi için JSONL formatında bir satır olarak hazırlıyoruz
-            temizlenmis_bloklar.append({
-                "source_file": os.path.basename(pdf_path),
-                "page_num": page_num + 1,
-                "text": temiz_metin
-            })
-
-        # Tüm temizlenmiş sayfaları JSONL dosyasına yaz
-        if temizlenmis_bloklar:
-            with open(cikti_jsonl_yolu, "w", encoding="utf-8") as f:
-                for item in temizlenmis_bloklar:
-                    f.write(json.dumps(item, ensure_ascii=False) + '\n')
-                
-            print(f"-> ✅ Başarılı: '{os.path.basename(cikti_jsonl_yolu)}' (JSONL) dosyası oluşturuldu.\n")
-        else:
-             print(f"!! ⚠️ UYARI: '{os.path.basename(pdf_path)}' dosyasından hiçbir metin çıkarılamadı (Tamamen taranmış olabilir). JSONL dosyası oluşturulmadı.\n")
+# ==========================
+# 1. TÜM JSONL DOSYALARINI OKU
+# ==========================
+def jsonl_dosyalarini_yukle(klasor):
+    """Belirtilen klasördeki tüm .jsonl dosyalarını okuyup tek listeye döndürür."""
+    tum_veri = []
+    for dosya in os.listdir(klasor):
+        if dosya.endswith(".jsonl"):
+            yol = os.path.join(klasor, dosya)
+            with open(yol, "r", encoding="utf-8") as f:
+                for satir in f:
+                    try:
+                        item = json.loads(satir)
+                        tum_veri.append(item)
+                    except json.JSONDecodeError:
+                        print(f"⚠️ Uyarı: '{dosya}' içinde bozuk bir satır atlandı.")
+    print(f"Toplam {len(tum_veri)} metin yüklendi ({len(os.listdir(klasor))} dosyadan).")
+    return tum_veri
 
 
-    except Exception as e:
-        print(f"!! ❌ HATA: '{os.path.basename(pdf_path)}' işlenirken genel bir sorun oluştu: {e}\n")
+# ==========================
+# 2. METİN TEMİZLİĞİ (spaCy)
+# ==========================
+def metin_temizle_spacy(veri):
+    """Türkçe spaCy modeliyle metinleri köklerine indirger, gereksiz kelimeleri kaldırır."""
+    print("spaCy modeli yükleniyor (tr_core_news_lg)...")
+    nlp = spacy.load("tr_core_news_lg")
+
+    for item in veri:
+        doc = nlp(item["text"])
+        temiz = [
+            t.lemma_.lower() for t in doc
+            if t.is_alpha and not t.is_stop and t.pos_ in ["NOUN", "VERB", "ADJ"]
+        ]
+        item["clean_text"] = " ".join(temiz)
+    print("Metin temizleme tamamlandı.")
+    return veri
 
 
-# --- ANA PROGRAM ---
+# ==========================
+# 3. TF-IDF + ANOMALİ TESPİTİ
+# ==========================
+def anomaly_tespiti(veri, contamination=0.05):
+    """TF-IDF + IsolationForest ile anormal (farklı) sayfa metinlerini tespit eder."""
+    print("TF-IDF vektörleri oluşturuluyor...")
+    texts = [item["clean_text"] for item in veri]
+    vectorizer = TfidfVectorizer(max_features=2000)
+    X = vectorizer.fit_transform(texts)
+
+    print("Isolation Forest modeli eğitiliyor...")
+    iso = IsolationForest(contamination=contamination, random_state=42)
+    labels = iso.fit_predict(X.toarray())
+
+    for item, label in zip(veri, labels):
+        item["is_anomaly"] = (label == -1)
+    print("Anomali tespiti tamamlandı.")
+    return veri
+
+
+# ==========================
+# 4. SONUCU KAYDET
+# ==========================
+def temiz_json_kaydet(veri, cikti_klasoru):
+    """Tüm temizlenmiş veriyi tek bir JSON dosyasına kaydeder."""
+    cikti_yolu = os.path.join(cikti_klasoru, "all_clean_data.json")
+    with open(cikti_yolu, "w", encoding="utf-8") as f:
+        json.dump(veri, f, ensure_ascii=False, indent=2)
+    print(f"✅ Temiz veri kaydedildi: {cikti_yolu}")
+
+
+# ==========================
+# ANA AKIŞ
+# ==========================
 if __name__ == "__main__":
-    os.makedirs(CIKTI_KLASORU, exist_ok=True)
-    os.makedirs(KAYNAK_KLASORU, exist_ok=True)
+    print("=== CLEAN DATA PIPELINE BAŞLIYOR ===")
 
-    pdf_dosyalari = [f for f in os.listdir(KAYNAK_KLASORU) if f.lower().endswith(".pdf")]
+    data = jsonl_dosyalarini_yukle(GIRIS_KLASORU)
+    data = metin_temizle_spacy(data)
+    data = anomaly_tespiti(data, contamination=0.05)
+    temiz_json_kaydet(data, CIKTI_KLASORU)
 
-    if not pdf_dosyalari:
-        print(f"UYARI: '{KAYNAK_KLASORU}' klasöründe hiç PDF dosyası bulunamadı. Lütfen PDF'leri bu klasöre atın.")
-    else:
-        for pdf_dosya in pdf_dosyalari:
-            pdf_yolu = os.path.join(KAYNAK_KLASORU, pdf_dosya)
-            # Çıktı formatı: Dosya Adı.jsonl
-            jsonl_yolu = os.path.join(CIKTI_KLASORU, pdf_dosya.replace(".pdf", ".jsonl", 1))
-            pdf_isleyici_basit(pdf_yolu, jsonl_yolu)
-            
-        print("---")
-        print("Tüm PDF'ler işlendi. İlk Aşama Tamamlandı! 🔥")
-        print(f"Temiz veriler '{CIKTI_KLASORU}' klasöründe seni bekliyor.")
+    print("🎯 Tüm işlem tamamlandı! 'clean_json' klasörüne bakabilirsin.")

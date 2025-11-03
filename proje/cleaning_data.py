@@ -1,33 +1,95 @@
-import json, os, spacy
+import os
+import json
+import spacy
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import IsolationForest
 
-# 1. Dosyayı oku
-with open("json_cikti/dosya.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+# ==========================
+# AYARLAR
+# ==========================
+GIRIS_KLASORU = "json_cikti"   # PDF'lerden çıkan .jsonl dosyalarının bulunduğu klasör
+CIKTI_KLASORU = "clean_json"   # Temizlenmiş verilerin kaydedileceği klasör
+os.makedirs(CIKTI_KLASORU, exist_ok=True)
 
-# 2. spaCy ile temizle
-nlp = spacy.load("tr_core_news_lg")
-for item in data:
-    doc = nlp(item["text"])
-    item["clean_text"] = " ".join([
-        t.lemma_.lower() for t in doc
-        if t.is_alpha and not t.is_stop and t.pos_ in ["NOUN", "VERB", "ADJ"]
-    ])
+# ==========================
+# 1. TÜM JSONL DOSYALARINI OKU
+# ==========================
+def jsonl_dosyalarini_yukle(klasor):
+    """Belirtilen klasördeki tüm .jsonl dosyalarını okuyup tek listeye döndürür."""
+    tum_veri = []
+    for dosya in os.listdir(klasor):
+        if dosya.endswith(".jsonl"):
+            yol = os.path.join(klasor, dosya)
+            with open(yol, "r", encoding="utf-8") as f:
+                for satir in f:
+                    try:
+                        item = json.loads(satir)
+                        tum_veri.append(item)
+                    except json.JSONDecodeError:
+                        print(f"⚠️ Uyarı: '{dosya}' içinde bozuk bir satır atlandı.")
+    print(f"Toplam {len(tum_veri)} metin yüklendi ({len(os.listdir(klasor))} dosyadan).")
+    return tum_veri
 
-# 3. TF-IDF vektörleştirme
-texts = [item["clean_text"] for item in data]
-vectorizer = TfidfVectorizer(max_features=2000)
-X = vectorizer.fit_transform(texts)
 
-# 4. Isolation Forest ile anomali tespiti
-iso = IsolationForest(contamination=0.05, random_state=42)
-labels = iso.fit_predict(X.toarray())
+# ==========================
+# 2. METİN TEMİZLİĞİ (spaCy)
+# ==========================
+def metin_temizle_spacy(veri):
+    """Türkçe spaCy modeliyle metinleri köklerine indirger, gereksiz kelimeleri kaldırır."""
+    print("spaCy modeli yükleniyor (tr_core_news_lg)...")
+    nlp = spacy.load("tr_core_news_lg")
 
-for item, label in zip(data, labels):
-    item["is_anomaly"] = (label == -1)
+    for item in veri:
+        doc = nlp(item["text"])
+        temiz = [
+            t.lemma_.lower() for t in doc
+            if t.is_alpha and not t.is_stop and t.pos_ in ["NOUN", "VERB", "ADJ"]
+        ]
+        item["clean_text"] = " ".join(temiz)
+    print("Metin temizleme tamamlandı.")
+    return veri
 
-# 5. Clean JSON’a kaydet
-os.makedirs("clean_data", exist_ok=True)
-with open("clean_data/dosya_clean.json", "w", encoding="utf-8") as f:
-    json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ==========================
+# 3. TF-IDF + ANOMALİ TESPİTİ
+# ==========================
+def anomaly_tespiti(veri, contamination=0.05):
+    """TF-IDF + IsolationForest ile anormal (farklı) sayfa metinlerini tespit eder."""
+    print("TF-IDF vektörleri oluşturuluyor...")
+    texts = [item["clean_text"] for item in veri]
+    vectorizer = TfidfVectorizer(max_features=2000)
+    X = vectorizer.fit_transform(texts)
+
+    print("Isolation Forest modeli eğitiliyor...")
+    iso = IsolationForest(contamination=contamination, random_state=42)
+    labels = iso.fit_predict(X.toarray())
+
+    for item, label in zip(veri, labels):
+        item["is_anomaly"] = (label == -1)
+    print("Anomali tespiti tamamlandı.")
+    return veri
+
+
+# ==========================
+# 4. SONUCU KAYDET
+# ==========================
+def temiz_json_kaydet(veri, cikti_klasoru):
+    """Tüm temizlenmiş veriyi tek bir JSON dosyasına kaydeder."""
+    cikti_yolu = os.path.join(cikti_klasoru, "all_clean_data.json")
+    with open(cikti_yolu, "w", encoding="utf-8") as f:
+        json.dump(veri, f, ensure_ascii=False, indent=2)
+    print(f"✅ Temiz veri kaydedildi: {cikti_yolu}")
+
+
+# ==========================
+# ANA AKIŞ
+# ==========================
+if __name__ == "__main__":
+    print("=== CLEAN DATA PIPELINE BAŞLIYOR ===")
+
+    data = jsonl_dosyalarini_yukle(GIRIS_KLASORU)
+    data = metin_temizle_spacy(data)
+    data = anomaly_tespiti(data, contamination=0.05)
+    temiz_json_kaydet(data, CIKTI_KLASORU)
+
+    print("🎯 Tüm işlem tamamlandı! 'clean_json' klasörüne bakabilirsin.")

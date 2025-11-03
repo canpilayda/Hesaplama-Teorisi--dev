@@ -1,4 +1,4 @@
-import os
+import fitz # PyMuPDF
 import json
 import os
 import re
@@ -8,7 +8,7 @@ import sys
 from time import time
 
 # ====== AYARLAR ======
-KAYNAK_KLASORU = "pdfler" # PDF dosyalarını buraya at
+KAYNAK_KLASORU = "pdfler"  # PDF dosyalarını buraya at
 CIKTI_KLASORU = "json_cikti" # Temiz JSONL dosyaları buraya çıkacak
 # ---------------------
 
@@ -99,9 +99,7 @@ def pdf_isleyici_tam(pdf_path, cikti_jsonl_yolu):
         print(f"!! ❌ HATA: '{os.path.basename(pdf_path)}' işlenirken genel bir sorun oluştu: {e}\n")
 
 
-# ==========================
-# ANA AKIŞ
-# ==========================
+# --- ANA PROGRAM ---
 if __name__ == "__main__":
     start_time = time()
     

@@ -6,26 +6,23 @@ from PIL import Image
 import pytesseract
 import sys
 from time import time
-
+def json_cleaner():
+    
 # ====== AYARLAR ======
-KAYNAK_KLASORU = "pdfler"  # PDF dosyalarını buraya at
-CIKTI_KLASORU = "json_cikti" # Temiz JSONL dosyaları buraya çıkacak
+    KAYNAK_KLASORU = "denemepdf"  # PDF dosyalarını buraya at
+    CIKTI_KLASORU = "denemecikti" # Temiz JSONL dosyaları buraya çıkacak
 # ---------------------
 
 # !!! KRİTİK: TESSERACT YOLU BURADA ZORLA TANIMLANIYOR !!!
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 # -----------------------------------------------------------
 
 
-def metin_temizle(metin):
-    """
-    AI eğitimi için kritik olan satır sonu ve tireleme hatalarını düzeltir,
-    genel boşluk ve satır sonu temizliği yapar.
-    """
-    
-    # 1. Hatalı bölünen kelimeleri birleştirme (Örn: 'odevim-\niz' -> 'odevimiz')
+    def metin_temizle(metin):
+   
+    # 1. Hatalı bölünen kelimeleri birleştirme
     # Satır sonundaki tireyi, boşlukları ve yeni satırı kaldırır, kelimeleri birleştirir.
-    metin = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', metin)
+     metin = re.sub(r'(\w+)-\s*\n\s*(\w+)', r'\1\2', metin)
     
     # 2. Genel satır sonlarını ve fazla boşlukları tek boşluğa indirgeme
     metin = metin.replace('\n', ' ').replace('\r', '')
@@ -60,7 +57,6 @@ def pdf_isleyici_tam(pdf_path, cikti_jsonl_yolu):
                 temp_img_path = f"temp_page_{os.getpid()}_{page_num}.png" 
                 pix.save(temp_img_path)
                 
-                # !!! BURASI GÜNCELLENDİ: lang='eng' !!!
                 metin = pytesseract.image_to_string(Image.open(temp_img_path), lang='eng') 
                 os.remove(temp_img_path) 
                 

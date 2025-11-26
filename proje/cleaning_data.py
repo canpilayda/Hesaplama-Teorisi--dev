@@ -8,7 +8,8 @@ from sklearn.ensemble import IsolationForest
 # AYARLAR
 # ==========================
 GIRIS_KLASORU = "json_cikti"   # PDF'lerden çıkan .jsonl dosyalarının bulunduğu klasör
-CIKTI_KLASORU = "clean_json"   # Temizlenmiş verilerin kaydedileceği klasör
+CIKTI_KLASORU = "clean_data"   # Temizlenmiş verilerin kaydedileceği klasör
+os.makedirs(GIRIS_KLASORU, exist_ok=True)
 os.makedirs(CIKTI_KLASORU, exist_ok=True)
 
 # ==========================
@@ -36,8 +37,8 @@ def jsonl_dosyalarini_yukle(klasor):
 # ==========================
 def metin_temizle_spacy(veri):
     """Türkçe spaCy modeliyle metinleri köklerine indirger, gereksiz kelimeleri kaldırır."""
-    print("spaCy modeli yükleniyor (tr_core_news_lg)...")
-    nlp = spacy.load("tr_core_news_lg")
+    print("spaCy modeli yükleniyor (en_core_web_lg)...")
+    nlp = spacy.load("en_core_web_lg")
 
     for item in veri:
         doc = nlp(item["text"])

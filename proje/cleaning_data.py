@@ -1,152 +1,96 @@
 import os
 import json
 import spacy
-import time
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import IsolationForest
 
 # ==========================
-# AYARLAR (SETTINGS)
+# AYARLAR
 # ==========================
-GIRIS_KLASORU = "denemecikti"
-CIKTI_KLASORU = "denemedata"
+GIRIS_KLASORU = "json_cikti"   # PDF'lerden çıkan .jsonl dosyalarının bulunduğu klasör
+CIKTI_KLASORU = "clean_data"   # Temizlenmiş verilerin kaydedileceği klasör
+os.makedirs(GIRIS_KLASORU, exist_ok=True)
 os.makedirs(CIKTI_KLASORU, exist_ok=True)
-
-NUM_CORES = 4 # Güvenli çekirdek sayısı (sadece IsolationForest için)
-
-# 🚨 RAM KRİTİK AYARLAR
-SPACY_MODEL = "en_core_web_lg" 
-MAX_FEATURES_COUNT = 1000      
 
 # ==========================
 # 1. TÜM JSONL DOSYALARINI OKU
 # ==========================
-def load_jsonl_files(folder):
+def jsonl_dosyalarini_yukle(klasor):
     """Belirtilen klasördeki tüm .jsonl dosyalarını okuyup tek listeye döndürür."""
-    start_time = time.time()
     tum_veri = []
-    
-    for file_name in os.listdir(folder):
-        if file_name.endswith(".jsonl"):
-            path = os.path.join(folder, file_name)
-            with open(path, "r", encoding="utf-8") as f:
-                for line in f:
+    for dosya in os.listdir(klasor):
+        if dosya.endswith(".jsonl"):
+            yol = os.path.join(klasor, dosya)
+            with open(yol, "r", encoding="utf-8") as f:
+                for satir in f:
                     try:
-                        item = json.loads(line)
+                        item = json.loads(satir)
                         tum_veri.append(item)
                     except json.JSONDecodeError:
-                        print(f"⚠️ Uyarı: '{file_name}' içinde bozuk bir satır atlandı.")
-    end_time = time.time()
-    gecen_sure = end_time - start_time
-    print(f"Toplam {len(tum_veri)} metin yüklendi ({len([f for f in os.listdir(folder) if f.endswith('.jsonl')])} dosyadan).")
-    print(f"   [Süre: {gecen_sure:.2f} saniye]")
+                        print(f"⚠️ Uyarı: '{dosya}' içinde bozuk bir satır atlandı.")
+    print(f"Toplam {len(tum_veri)} metin yüklendi ({len(os.listdir(klasor))} dosyadan).")
     return tum_veri
 
 
 # ==========================
-# 2. METİN TEMİZLİĞİ (spaCy) LG MODEL
+# 2. METİN TEMİZLİĞİ (spaCy)
 # ==========================
-def clean_text_spacy(data):
-    """Lemmatizes and removes stopwords/punctuation using the LG spaCy model (Sequential Processing)."""
-    print(f"Loading spaCy model ({SPACY_MODEL})...") 
-    nlp = spacy.load(SPACY_MODEL, disable=["parser", "ner"]) 
-    
-    start_time = time.time()
-    texts = [item["text"] for item in data]
-    print(f"   🐢 Sıralı işlem başlatıldı (Single-Core). Bu adım en uzun sürecek.")
-    
-    # nlp.pipe ile metinleri sıralı işle
-    processed_docs = nlp.pipe(texts, batch_size=2000) 
-    
-    for item, doc in zip(data, processed_docs):
-        cleaned = [
+def metin_temizle_spacy(veri):
+    """Türkçe spaCy modeliyle metinleri köklerine indirger, gereksiz kelimeleri kaldırır."""
+    print("spaCy modeli yükleniyor (en_core_web_lg)...")
+    nlp = spacy.load("en_core_web_lg")
+
+    for item in veri:
+        doc = nlp(item["text"])
+        temiz = [
             t.lemma_.lower() for t in doc
             if t.is_alpha and not t.is_stop and t.pos_ in ["NOUN", "VERB", "ADJ"]
         ]
-        item["clean_text"] = " ".join(cleaned)
-        
-    end_time = time.time()
-    gecen_sure = end_time - start_time
-    print("Text cleaning completed.")
-    print(f"   [Süre: {gecen_sure:.2f} saniye]")
-    return data
+        item["clean_text"] = " ".join(temiz)
+    print("Metin temizleme tamamlandı.")
+    return veri
 
 
 # ==========================
-# 3. TF-IDF + ANOMALİ TESPİTİ - MATRİS KÜÇÜLTÜLDÜ
+# 3. TF-IDF + ANOMALİ TESPİTİ
 # ==========================
-def detect_anomaly(data, contamination=0.01, n_jobs=NUM_CORES):
-    """Detects anomalous (different) page texts using TF-IDF + IsolationForest."""
-    start_time = time.time()
-    
-    print(f"Creating TF-IDF vectors (Max Features: {MAX_FEATURES_COUNT})...")
-    texts = [item["clean_text"] for item in data]
-    vectorizer = TfidfVectorizer(max_features=MAX_FEATURES_COUNT) 
+def anomaly_tespiti(veri, contamination=0.05):
+    """TF-IDF + IsolationForest ile anormal (farklı) sayfa metinlerini tespit eder."""
+    print("TF-IDF vektörleri oluşturuluyor...")
+    texts = [item["clean_text"] for item in veri]
+    vectorizer = TfidfVectorizer(max_features=2000)
     X = vectorizer.fit_transform(texts)
 
-    print("Training Isolation Forest model...")
-    iso = IsolationForest(contamination=contamination, random_state=42, n_jobs=n_jobs) 
+    print("Isolation Forest modeli eğitiliyor...")
+    iso = IsolationForest(contamination=contamination, random_state=42)
     labels = iso.fit_predict(X.toarray())
 
-    for item, label in zip(data, labels):
-        # 🚨 HATA GİDERİLDİ: bool'u str'ye çevirdik
-        item["is_anomaly"] = str(label == -1) 
-        
-    end_time = time.time()
-    gecen_sure = end_time - start_time
-
-    print("Anomaly detection completed.")
-    print(f"   [Süre: {gecen_sure:.2f} saniye]")
-    return data
+    for item, label in zip(veri, labels):
+        item["is_anomaly"] = (label == -1)
+    print("Anomali tespiti tamamlandı.")
+    return veri
 
 
 # ==========================
 # 4. SONUCU KAYDET
 # ==========================
-def save_cleaned_json(data, output_folder):
+def temiz_json_kaydet(veri, cikti_klasoru):
     """Tüm temizlenmiş veriyi tek bir JSON dosyasına kaydeder."""
-    start_time = time.time()
-    output_path = os.path.join(output_folder, "all_clean_data.json")
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-        
-    end_time = time.time()
-    gecen_sure = end_time - start_time
-
-    print(f"✅ Temiz veri kaydedildi: {output_path}")
-    print(f"   [Süre: {gecen_sure:.2f} saniye]")
+    cikti_yolu = os.path.join(cikti_klasoru, "all_clean_data.json")
+    with open(cikti_yolu, "w", encoding="utf-8") as f:
+        json.dump(veri, f, ensure_ascii=False, indent=2)
+    print(f"✅ Temiz veri kaydedildi: {cikti_yolu}")
 
 
 # ==========================
-# ANA AKIŞ (MAIN FLOW)
+# ANA AKIŞ
 # ==========================
 if __name__ == "__main__":
-    
-    genel_start_time = time.time()
-    
-    print("=== CLEAN DATA PIPELINE BAŞLIYOR (LG Model + Düşük Matris Modu) ===")
+    print("=== CLEAN DATA PIPELINE BAŞLIYOR ===")
 
-    data = load_jsonl_files(GIRIS_KLASORU)
-    data = clean_text_spacy(data)
-    data = detect_anomaly(data)
-    
-    # Anomali Raporu
-    anomali_sayisi = sum(1 for item in data if item["is_anomaly"])
-    toplam_veri = len(data)
-    anomali_yuzdesi = (anomali_sayisi / toplam_veri) * 100 if toplam_veri > 0 else 0
-    
-    print("-" * 30)
-    print(f"📊 VERİ KALİTE RAPORU:")
-    print(f"Toplam sayfa/metin: {toplam_veri}")
-    print(f"Anomali Olarak İşaretlenen: {anomali_sayisi} adet")
-    print(f"Verinin Kayıp/Aykırı Yüzdesi: {anomali_yuzdesi:.2f}%")
-    print("-" * 30)
+    data = jsonl_dosyalarini_yukle(GIRIS_KLASORU)
+    data = metin_temizle_spacy(data)
+    data = anomaly_tespiti(data, contamination=0.05)
+    temiz_json_kaydet(data, CIKTI_KLASORU)
 
-    save_cleaned_json(data, CIKTI_KLASORU)
-    
-    genel_end_time = time.time()
-    genel_sure = genel_end_time - genel_start_time
-    
-    print("--------------------------------")
-    print(f"🎯 Tüm işlem tamamlandı! TOPLAM SÜRE: {genel_sure:.2f} saniye")
-    print("--------------------------------")
+    print("🎯 Tüm işlem tamamlandı! 'clean_json' klasörüne bakabilirsin.")

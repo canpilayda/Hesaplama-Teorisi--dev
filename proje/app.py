@@ -15,6 +15,12 @@ from werkzeug.utils import secure_filename
 import json  # Sonuçları okumak için
 import pdf_processor  # Senin sadık modülün
 
+# --- DÜZELTME BURADA ---
+# Dosya adın data_cleaning.py olduğu için import böyle olmalı:
+import data_cleaning
+
+# -----------------------
+
 app = Flask(__name__)
 
 # --- KLASÖR YAPILANDIRMASI ---
@@ -59,12 +65,9 @@ def arka_planda_isle(dosya_yolu, islem_id, dosya_adi):
             ISLEM_DURUMU[islem_id] = yuzde
 
         # 1. Analiz Başlat (Callback ile)
-        # pdf_processor dosyanı son attığım "progress_callback" eklenmiş haliyle kullanmalısın.
-        # Eğer o yoksa hata vermez ama yüzde ilerlemez, direkt 0'dan 100'e atlar.
         analiz_verisi = pdf_processor.pdf_isleyici_tam(dosya_yolu)
 
-        # NOT: Eğer pdf_processor.py içinde progress_callback parametresi yoksa
-        # manuel olarak %50 yapalım ki kullanıcı hareket görsün.
+        # Manuel olarak %50 yapalım
         ISLEM_DURUMU[islem_id] = 50
 
         # 2. Dosyaları Kaydet
@@ -74,7 +77,7 @@ def arka_planda_isle(dosya_yolu, islem_id, dosya_adi):
         # JSON Kaydet
         pdf_processor.json_olarak_kaydet(analiz_verisi, json_path)
 
-        # WORD Kaydet (Senin basit ve çalışan fonksiyonun)
+        # WORD Kaydet
         pdf_processor.word_olarak_kaydet(analiz_verisi, word_path)
 
         # İşlem Bitti
@@ -82,7 +85,33 @@ def arka_planda_isle(dosya_yolu, islem_id, dosya_adi):
 
     except Exception as e:
         print(f"Arka plan hatası: {e}")
-        ISLEM_DURUMU[islem_id] = 100  # Hata olsa da bitir ki takılı kalmasın
+        ISLEM_DURUMU[islem_id] = 100  # Hata olsa da bitir
+
+
+@app.route("/ai-temizle")
+def ai_temizle():
+    """
+    Tüm downloads klasörünü alır, temizler, anomali tespiti yapar.
+    """
+    try:
+        # data_cleaning modülündeki fonksiyonu çağır
+        sonuc = data_cleaning.pipeline_calistir()
+
+        if sonuc["durum"] == "hata":
+            return jsonify({"error": sonuc["mesaj"]}), 400
+
+        return jsonify(sonuc)
+
+    except Exception as e:
+        print(f"AI Pipeline Hatası: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/ai-indir/<dosya_adi>")
+def ai_indir(dosya_adi):
+    """Temizlenmiş veriyi indirmek için"""
+    klasor = data_cleaning.CIKTI_KLASORU
+    return send_file(os.path.join(klasor, dosya_adi), as_attachment=True)
 
 
 # --- ROUTE: ANA SAYFA & YÜKLEME ---
@@ -103,8 +132,6 @@ def index():
                 file.save(file_path)
 
                 # --- CACHE TEMİZLİĞİ ---
-                # Kullanıcı aynı dosyayı tekrar yüklediyse, eski çıktıları sil.
-                # Böylece "Zaten var" demeyip baştan analiz ederiz.
                 base_name = os.path.splitext(filename)[0]
                 json_path = os.path.join(
                     app.config["DOWNLOAD_FOLDER"], base_name + ".json"
@@ -138,7 +165,6 @@ def islemi_baslat(dosya_adi):
     word_path = os.path.join(app.config["DOWNLOAD_FOLDER"], base_name + ".docx")
 
     # --- CACHE KONTROLÜ ---
-    # Eğer dosyalar zaten varsa, işlemciyi yorma.
     if os.path.exists(json_path) and os.path.exists(word_path):
         print(f"⚡ CACHE: {dosya_adi} önbellekten getiriliyor.")
         islem_id = str(uuid.uuid4())
@@ -224,5 +250,4 @@ def indir(tur, dosya_adi):
 
 
 if __name__ == "__main__":
-    # threaded=True Flask'ın varsayılanıdır ama yine de açıkça yazalım
     app.run(debug=True, threaded=True)

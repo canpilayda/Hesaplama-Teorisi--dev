@@ -22,12 +22,14 @@
         }
         .sidebar-header { padding: 15px; border-bottom: 1px solid #333; text-align: center; }
         .sidebar-header h2 { margin: 0; font-size: 1.1rem; color: white; }
+        
         .upload-area { padding: 15px; border-bottom: 1px solid #333; }
         .upload-btn-label {
             display: block; background: var(--primary); color: white; padding: 8px; text-align: center;
             border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
         }
         .upload-btn-label:hover { opacity: 0.9; }
+        
         .file-list { flex-grow: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
         .file-item { padding: 0; }
         .file-link {
@@ -91,7 +93,7 @@
             <div id="progressBar"></div>
         </div>
         <h2 id="progressText" style="margin-top: 20px;">Analiz Başlıyor... %0</h2>
-        <p style="color:#aaa; font-size: 0.9rem;">OCR işlemi CPU gücüne göre zaman alabilir.</p>
+        <p style="color:#aaa; font-size: 0.9rem;">İşlem devam ederken lütfen sayfayı kapatmayın.</p>
     </div>
 
     <aside class="sidebar">
@@ -150,10 +152,29 @@
             </div>
 
             <div class="panel">
-                <div class="panel-header"><h3>🤖 AI & JSON</h3></div>
-                <div class="text-content" style="background:#f9f9f9; color:#777;">{{ ikinci_alan }}</div>
-                <div style="margin-top:5px; text-align:center;">
-                    <a href="{{ url_for('indir', tur='json', dosya_adi=dosya_adi) }}" class="btn btn-green"><i class="fas fa-file-code"></i> JSON İndir</a>
+                <div class="panel-header">
+                    <h3>🤖 AI Pipeline</h3>
+                    <span id="aiStatus" style="font-size: 0.8rem; color: #888;">Hazır</span>
+                </div>
+                
+                <div id="aiContent" class="text-content" style="background:#f9f9f9; color:#555; font-size: 12px;">
+                    Downloads klasöründeki tüm verileri temizlemek ve anomali tespiti yapmak için aşağıdaki butona basın.
+                    <br><br>
+                    Bu işlem:
+                    <ul>
+                        <li>spaCy ile NLP temizliği</li>
+                        <li>TF-IDF & Isolation Forest ile Anomali Tespiti</li>
+                        <li>Tek bir JSON dosyasında birleştirme</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-top:10px; text-align:center; display: flex; gap: 5px; justify-content: center;">
+                    <button onclick="aiTemizlikBaslat()" class="btn btn-blue">
+                        <i class="fas fa-magic"></i> Analizi Başlat
+                    </button>
+                    <a id="downloadCleanBtn" href="#" class="btn btn-green" style="display:none;">
+                        <i class="fas fa-download"></i> Temiz Veriyi İndir
+                    </a>
                 </div>
             </div>
 
@@ -187,7 +208,6 @@
             if (firstMatch) {
                 firstMatch.scrollIntoView({ behavior: "smooth", block: "center" });
                 
-                // PDF Sayfasını Bulma Mantığı
                 const fullHTML = container.innerHTML;
                 const matchIndex = fullHTML.indexOf('<mark>');
                 const textBeforeMatch = fullHTML.substring(0, matchIndex);
@@ -207,40 +227,60 @@
             }
         }
 
-        // --- PROGRESS BAR & AJAX İŞLEMLERİ ---
+        // --- PROGRESS BAR & AJAX İŞLEMLERİ (CACHE DÜZELTMESİ YAPILDI) ---
         function analizBaslat(dosyaAdi) {
             const overlay = document.getElementById('progressOverlay');
             const bar = document.getElementById('progressBar');
             const txt = document.getElementById('progressText');
             
-            overlay.style.display = 'flex';
-            bar.style.width = '0%';
-            txt.innerText = 'Başlatılıyor...';
-
+            // İstek atana kadar overlay'i GÖSTERMİYORUZ. 
+            // Çünkü cache varsa boşuna siyah ekran açılıp kapanmasın.
+            
             fetch(`/baslat/${dosyaAdi}`)
                 .then(res => res.json())
                 .then(data => {
                     if (data.error) {
                         alert("Hata: " + data.error);
-                        overlay.style.display = 'none';
+                        return;
+                    }
+                    
+                    if (data.cached) {
+                        // Eğer dosya önbellekte varsa, bekleme yapma! Direkt git.
+                        console.log("Cache hit! Hızlı açılıyor...");
+                        window.location.href = `/sonuc/${dosyaAdi}`;
                     } else {
+                        // Önbellekte yok, işlem başladı. ŞİMDİ overlay aç.
+                        overlay.style.display = 'flex';
+                        bar.style.width = '0%';
+                        txt.innerText = 'Başlatılıyor...';
                         durumSorgula(data.islem_id, dosyaAdi);
                     }
                 })
                 .catch(err => {
                     alert("Sunucu hatası! app.py çalışıyor mu?");
-                    overlay.style.display = 'none';
                 });
         }
 
         function durumSorgula(islemId, dosyaAdi) {
             const bar = document.getElementById('progressBar');
             const txt = document.getElementById('progressText');
+            const overlay = document.getElementById('progressOverlay');
 
             const interval = setInterval(() => {
                 fetch(`/durum/${islemId}`)
-                    .then(res => res.json())
+                    .then(res => {
+                        if (res.status === 404) {
+                            // Eğer sunucu ID'yi unutmuşsa (restart vs)
+                            clearInterval(interval);
+                            alert("İşlem takibi kayboldu (Sunucu yeniden başlamış olabilir).");
+                            overlay.style.display = 'none';
+                            return null;
+                        }
+                        return res.json();
+                    })
                     .then(data => {
+                        if (!data) return; // 404 döndüyse çık
+
                         const yuzde = data.yuzde;
                         bar.style.width = yuzde + '%';
                         txt.innerText = `Analiz Ediliyor... %${yuzde}`;
@@ -253,8 +293,53 @@
                             }, 500);
                         }
                     })
-                    .catch(err => clearInterval(interval));
+                    .catch(err => {
+                        clearInterval(interval);
+                        overlay.style.display = 'none';
+                    });
             }, 1000);
+        }
+
+        // --- AI PIPELINE JS ---
+        function aiTemizlikBaslat() {
+            const contentDiv = document.getElementById('aiContent');
+            const statusSpan = document.getElementById('aiStatus');
+            const btnDownload = document.getElementById('downloadCleanBtn');
+            
+            contentDiv.innerHTML = '<div style="text-align:center; margin-top:50px;"><i class="fas fa-spinner fa-spin fa-2x"></i><br><br>Yapay Zeka Verileri İşliyor...<br>(spaCy modeli ve Anomali tespiti biraz zaman alabilir)</div>';
+            statusSpan.innerText = "İşleniyor...";
+            statusSpan.style.color = "orange";
+            
+            fetch('/ai-temizle')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        contentDiv.innerText = "Hata: " + data.error;
+                        statusSpan.innerText = "Hata";
+                        statusSpan.style.color = "red";
+                    } else {
+                        statusSpan.innerText = "Tamamlandı";
+                        statusSpan.style.color = "green";
+                        
+                        let html = `<strong>✅ ${data.mesaj}</strong><br><hr>`;
+                        html += "<strong>Örnek Kayıtlar (İlk 5):</strong><br>";
+                        
+                        data.veri.forEach(item => {
+                            const isAnomaly = item.is_anomaly ? '<span style="color:red; font-weight:bold;">[ANOMALİ]</span>' : '<span style="color:green;">[NORMAL]</span>';
+                            html += `<p style="border-bottom:1px solid #eee; padding:5px 0;">
+                                ${isAnomaly} <b>Sayfa ${item.page_num}:</b> ${item.clean_text.substring(0, 80)}...
+                            </p>`;
+                        });
+
+                        contentDiv.innerHTML = html;
+                        btnDownload.href = `/ai-indir/${data.dosya_yolu}`;
+                        btnDownload.style.display = 'inline-block';
+                    }
+                })
+                .catch(err => {
+                    contentDiv.innerText = "Sunucu Hatası!";
+                    statusSpan.innerText = "Hata";
+                });
         }
     </script>
 

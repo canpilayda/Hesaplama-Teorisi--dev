@@ -3,184 +3,260 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Analyzer</title>
-
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-
+    <title>PDF Analiz Üssü Pro</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f4f4;
-            overflow: hidden;
+        :root {
+            --sidebar-bg: #1e1e1e;
+            --sidebar-text: #cccccc;
+            --active-item: #37373d;
+            --primary: #4a90e2;
+            --bg: #e0e5ec;
         }
-
-        .container {
-            display: grid;
-            grid-template-columns: 250px 1fr 600px;
-            height: 100vh;
-        }
-
-        /* Sol Menü */
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); margin: 0; padding: 0; height: 100vh; overflow: hidden; display: flex; }
+        
+        /* --- SOL SIDEBAR --- */
         .sidebar {
-            background: #1f2937;
-            color: white;
-            padding: 15px;
-            overflow-y: auto;
+            width: 250px; background-color: var(--sidebar-bg); color: var(--sidebar-text);
+            display: flex; flex-direction: column; border-right: 1px solid #333; flex-shrink: 0;
         }
-        .sidebar h2 {
-            text-align: center;
-            font-size: 18px;
+        .sidebar-header { padding: 15px; border-bottom: 1px solid #333; text-align: center; }
+        .sidebar-header h2 { margin: 0; font-size: 1.1rem; color: white; }
+        .upload-area { padding: 15px; border-bottom: 1px solid #333; }
+        .upload-btn-label {
+            display: block; background: var(--primary); color: white; padding: 8px; text-align: center;
+            border-radius: 4px; cursor: pointer; font-size: 0.9rem; transition: 0.2s;
         }
-        .file-item {
-            padding: 10px;
-            margin: 5px 0;
-            background: #374151;
-            border-radius: 5px;
-            cursor: pointer;
+        .upload-btn-label:hover { opacity: 0.9; }
+        .file-list { flex-grow: 1; overflow-y: auto; list-style: none; padding: 0; margin: 0; }
+        .file-item { padding: 0; }
+        .file-link {
+            display: flex; align-items: center; gap: 10px; padding: 10px 15px;
+            color: var(--sidebar-text); text-decoration: none; border-left: 3px solid transparent;
+            transition: 0.2s; font-size: 0.9rem;
         }
-        .file-item:hover {
-            background: #4b5563;
-        }
-        .file-item.active {
-            background: #2563eb;
-        }
+        .file-link:hover { background-color: #2a2d2e; color: white; }
+        .file-link.active { background-color: var(--active-item); border-left-color: var(--primary); color: white; }
 
-        /* PDF Panel */
-        .pdf-panel {
-            padding: 10px;
-            overflow-y: auto;
-            background: #e5e7eb;
-        }
+        /* --- ANA İÇERİK --- */
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; padding: 15px; height: 100%; box-sizing: border-box; }
 
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
+        /* Dashboard Grid */
+        .dashboard {
+            display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 15px;
+            flex-grow: 1; overflow: hidden; 
         }
-
-        /* Sağ Panel (Metin + JSON) */
-        .right-panel {
-            display: grid;
-            grid-template-rows: 1fr 1fr;
-            border-left: 2px solid #ccc;
-            background: white;
-        }
-
         .panel {
-            padding: 10px;
-            overflow-y: auto;
-            border-bottom: 2px solid #ddd;
+            background: white; border-radius: 8px; padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; overflow: hidden;
         }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 8px; }
+        .panel h3 { margin: 0; font-size: 0.95rem; color: #555; }
 
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        /* İçerik Alanları */
+        .text-content {
+            flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-family: 'Consolas', monospace; font-size: 13px; overflow-y: auto;
+            white-space: pre-wrap; background-color: #fafafa;
         }
+        iframe { width: 100%; height: 100%; border: none; }
+        
+        /* Arama & Highlight */
+        .search-box { display: flex; gap: 5px; }
+        .search-input { padding: 4px; border: 1px solid #ccc; border-radius: 3px; width: 120px; font-size: 12px; }
+        mark { background-color: #ffeb3b; color: black; font-weight: bold; padding: 2px; border-radius: 2px; }
 
-        .btn {
-            padding: 5px 12px;
-            border-radius: 6px;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-blue { background: #2563eb; color: white; }
-        .btn-blue:hover { background: #1d4ed8; }
+        /* Butonlar */
+        .btn { padding: 5px 10px; color: white; border: none; border-radius: 3px; cursor: pointer; text-decoration: none; font-size: 0.8rem; }
+        .btn-blue { background-color: var(--primary); }
+        .btn-purple { background-color: #8e44ad; }
+        .btn-green { background-color: #27ae60; }
+        .btn-orange { background-color: #f39c12; }
 
-        /* Loading Overlay */
-        #loadingOverlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.7);
-            z-index: 9999;
-            display: none;
-            color: white;
-            font-size: 22px;
-            text-align: center;
-            padding-top: 40vh;
+        /* YÜKLENİYOR EKRANI (Overlay) */
+        #progressOverlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 9999;
+            flex-direction: column; justify-content: center; align-items: center; color: white;
         }
+        .progress-container { width: 50%; background: #333; border-radius: 10px; padding: 5px; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
+        #progressBar { width: 0%; height: 20px; background: linear-gradient(90deg, #00b09b, #96c93d); border-radius: 8px; transition: width 0.3s; }
     </style>
 </head>
-
 <body>
 
-<div id="loadingOverlay">İşlem yapılıyor, bekletiyorum Büllüğüm... <br> <br>
-    <i class="fas fa-spinner fa-spin" style="font-size: 32px;"></i>
-</div>
-
-<div class="container">
-
-    <!-- SOL MENÜ -->
-    <div class="sidebar">
-        <h2>PDF Listesi</h2>
-
-        {% for pdf in pdf_list %}
-        <div class="file-item {% if aktif_dosya == pdf %}active{% endif %}"
-             onclick="window.location.href='/dosya/{{ pdf }}'">
-            <i class="fas fa-file-pdf"></i> {{ pdf }}
+    <div id="progressOverlay">
+        <div class="progress-container">
+            <div id="progressBar"></div>
         </div>
-        {% endfor %}
+        <h2 id="progressText" style="margin-top: 20px;">Analiz Başlıyor... %0</h2>
+        <p style="color:#aaa; font-size: 0.9rem;">OCR işlemi CPU gücüne göre zaman alabilir.</p>
     </div>
 
-    <!-- ORTA PANEL (PDF GÖRÜNTÜLEME) -->
-    <div class="pdf-panel">
-        {% if aktif_dosya %}
-        <iframe src="/static/pdf/{{ aktif_dosya }}"></iframe>
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2><i class="fas fa-bolt"></i> PDF Studio</h2>
+        </div>
+
+        <div class="upload-area">
+            <form id="uploadForm" action="/" method="POST" enctype="multipart/form-data">
+                <label class="upload-btn-label">
+                    <i class="fas fa-plus-circle"></i> Yeni Dosya Yükle
+                    <input type="file" name="pdf_files" accept=".pdf" multiple style="display: none;" onchange="document.getElementById('uploadForm').submit()">
+                </label>
+            </form>
+        </div>
+
+        <div class="sidebar-header" style="text-align: left; padding: 10px 15px; font-size: 0.8rem; background: #252526; color: #aaa;">
+            DOSYA GEZGİNİ
+        </div>
+
+        <ul class="file-list">
+            {% for dosya in dosyalar %}
+            <li class="file-item">
+                <a href="#" onclick="analizBaslat('{{ dosya }}'); return false;" class="file-link {% if dosya == aktif_dosya %}active{% endif %}">
+                    <i class="far fa-file-pdf"></i> {{ dosya }}
+                </a>
+            </li>
+            {% endfor %}
+            {% if not dosyalar %}
+            <li style="padding: 15px; text-align: center; color: #666; font-size: 0.8rem;">Henüz dosya yok.</li>
+            {% endif %}
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        {% if veri_var %}
+        <div class="dashboard">
+            
+            <div class="panel">
+                <div class="panel-header"><h3>👁️ {{ aktif_dosya }}</h3></div>
+                <iframe id="pdf-frame" src="{{ url_for('pdf_goster', dosya_adi=aktif_dosya) }}"></iframe>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header">
+                    <h3>📝 Temiz Metin</h3>
+                    <div class="search-box">
+                        <input type="text" id="searchInput" class="search-input" placeholder="Ara..." onkeypress="handleEnter(event)">
+                        <button onclick="metinAra()" class="btn btn-orange"><i class="fas fa-search"></i></button>
+                    </div>
+                </div>
+                <div id="textContent" class="text-content">{{ metin }}</div>
+                <div style="margin-top:5px; text-align:center;">
+                    <a href="{{ url_for('indir', tur='word', dosya_adi=dosya_adi) }}" class="btn btn-purple"><i class="fas fa-file-word"></i> Word İndir</a>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-header"><h3>🤖 AI & JSON</h3></div>
+                <div class="text-content" style="background:#f9f9f9; color:#777;">{{ ikinci_alan }}</div>
+                <div style="margin-top:5px; text-align:center;">
+                    <a href="{{ url_for('indir', tur='json', dosya_adi=dosya_adi) }}" class="btn btn-green"><i class="fas fa-file-code"></i> JSON İndir</a>
+                </div>
+            </div>
+
+        </div>
         {% else %}
-        <p style="text-align:center; margin-top:20px;">Bir PDF seç Büllüğüm 💅</p>
+        <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; color:#999;">
+            <i class="fas fa-layer-group" style="font-size: 4rem; margin-bottom: 20px; color: #ddd;"></i>
+            <h2>Hoşgeldin!</h2>
+            <p>Sol menüden bir dosya seç veya "Yeni Dosya Yükle" butonunu kullan.</p>
+        </div>
         {% endif %}
-    </div>
+    </main>
 
-    <!-- SAĞ PANEL -->
-    <div class="right-panel">
+    <script>
+        // --- ARAMA ÖZELLİĞİ ---
+        const originalText = document.getElementById('textContent')?.innerText || "";
 
-        <!-- METİN PANELİ -->
-        <div class="panel">
-            <div class="panel-header">
-                <h3>📄 Metin Çıktısı</h3>
-            </div>
+        function handleEnter(e) { if (e.key === 'Enter') metinAra(); }
 
-            <pre>{% if metin %}{{ metin }}{% else %}Henüz metin oluşturulmadı.{% endif %}</pre>
-        </div>
+        function metinAra() {
+            const input = document.getElementById('searchInput').value.trim();
+            const container = document.getElementById('textContent');
+            
+            if (!input) { container.innerText = originalText; return; }
 
-        <!-- JSON + AI PANELİ -->
-        <div class="panel">
+            const safeText = originalText; 
+            const regex = new RegExp(`(${input})`, 'gi');
+            container.innerHTML = safeText.replace(regex, '<mark>$1</mark>');
 
-            <div class="panel-header">
-                <h3>🤖 AI & JSON</h3>
+            const firstMatch = container.querySelector('mark');
+            if (firstMatch) {
+                firstMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+                
+                // PDF Sayfasını Bulma Mantığı
+                const fullHTML = container.innerHTML;
+                const matchIndex = fullHTML.indexOf('<mark>');
+                const textBeforeMatch = fullHTML.substring(0, matchIndex);
+                const pageMatches = [...textBeforeMatch.matchAll(/---\s*Sayfa\s*(\d+)\s*---/g)];
+                
+                if (pageMatches.length > 0) {
+                    pdfSayfasinaGit(pageMatches[pageMatches.length - 1][1]);
+                }
+            } else { alert("Metin bulunamadı!"); }
+        }
 
-                {% if aktif_dosya %}
-                <button class="btn btn-blue"
-                        onclick="analizBaslat('{{ aktif_dosya }}')"
-                        style="font-size: 0.75rem; padding: 5px 8px;">
-                    <i class="fas fa-robot"></i> Analizi Yeniden Çalıştır
-                </button>
-                {% endif %}
-            </div>
-
-            <pre>{% if json_data %}{{ json_data }}{% else %}Henüz JSON oluşturulmadı.{% endif %}</pre>
-        </div>
-
-    </div>
-
-</div>
-
-<script>
-function analizBaslat(dosya) {
-    document.getElementById("loadingOverlay").style.display = "block";
-
-    fetch("/baslat/" + dosya)
-        .then(res => res.json())
-        .then(data => {
-            if (data.ok) {
-                window.location.href = "/sonuc/" + dosya;
-            } else {
-                alert("Hata oluştu: " + data.hata);
+        function pdfSayfasinaGit(sayfaNo) {
+            const iframe = document.getElementById('pdf-frame');
+            if(iframe){
+                let src = iframe.src.split('#')[0];
+                iframe.src = src + "#page=" + sayfaNo;
             }
-        });
-}
-</script>
+        }
+
+        // --- PROGRESS BAR & AJAX İŞLEMLERİ ---
+        function analizBaslat(dosyaAdi) {
+            const overlay = document.getElementById('progressOverlay');
+            const bar = document.getElementById('progressBar');
+            const txt = document.getElementById('progressText');
+            
+            overlay.style.display = 'flex';
+            bar.style.width = '0%';
+            txt.innerText = 'Başlatılıyor...';
+
+            fetch(`/baslat/${dosyaAdi}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.error) {
+                        alert("Hata: " + data.error);
+                        overlay.style.display = 'none';
+                    } else {
+                        durumSorgula(data.islem_id, dosyaAdi);
+                    }
+                })
+                .catch(err => {
+                    alert("Sunucu hatası! app.py çalışıyor mu?");
+                    overlay.style.display = 'none';
+                });
+        }
+
+        function durumSorgula(islemId, dosyaAdi) {
+            const bar = document.getElementById('progressBar');
+            const txt = document.getElementById('progressText');
+
+            const interval = setInterval(() => {
+                fetch(`/durum/${islemId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        const yuzde = data.yuzde;
+                        bar.style.width = yuzde + '%';
+                        txt.innerText = `Analiz Ediliyor... %${yuzde}`;
+
+                        if (yuzde >= 100) {
+                            clearInterval(interval);
+                            txt.innerText = "Tamamlandı! Yönlendiriliyor...";
+                            setTimeout(() => {
+                                window.location.href = `/sonuc/${dosyaAdi}`;
+                            }, 500);
+                        }
+                    })
+                    .catch(err => clearInterval(interval));
+            }, 1000);
+        }
+    </script>
 
 </body>
 </html>

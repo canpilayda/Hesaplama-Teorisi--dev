@@ -1,60 +1,54 @@
 import os
 import json
 import spacy
-import textacy.preprocessing as tprep
+from textacy.preprocessing import normalize
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import IsolationForest
 
 # AYARLAR
-GIRIS_KLASORU = "json_cikti"   # PDF'lerden çıkan .jsonl dosyalarının bulunduğu klasör
-CIKTI_KLASORU = "clean_data"  # Temizlenmiş verilerin kaydedileceği klasör
+GIRIS_KLASORU = "json_cikti"
+CIKTI_KLASORU = "clean_data"
 os.makedirs(GIRIS_KLASORU, exist_ok=True)
 os.makedirs(CIKTI_KLASORU, exist_ok=True)
 
-# TÜM JSONL DOSYALARINI OKU
+# JSONL YÜKLE
 def jsonl_dosyalarini_yukle(klasor):
     tum_veri = []
     for dosya in os.listdir(klasor):
         if dosya.endswith(".jsonl"):
-            yol = os.path.join(klasor, dosya)
-            with open(yol, "r", encoding="utf-8") as f:
+            with open(os.path.join(klasor, dosya), "r", encoding="utf-8") as f:
                 for satir in f:
                     try:
-                        item = json.loads(satir)
-                        tum_veri.append(item)
+                        tum_veri.append(json.loads(satir))
                     except json.JSONDecodeError:
-                        print(f"⚠️ Uyarı: '{dosya}' içinde bozuk bir satır atlandı.")
-    print(f"Toplam {len(tum_veri)} metin yüklendi ({len(os.listdir(klasor))} dosyadan).")
+                        pass
     return tum_veri
+# --- TİRELERİ BOŞLUĞA ÇEVİRME FONKSİYONU ---
+def hyphen_to_space(text):
+    return text.replace("-", " ")
 
-# METİN TEMİZLİĞİ (spaCy + Textacy)
-def metin_temizle(veri):
-    print("spaCy modeli yükleniyor (en_core_web_lg)...")
-    nlp = spacy.load("en_core_web_lg")
-
+# METİN TEMİZLE
+def metin_temizle(veri, nlp_model):
     for item in veri:
-        text = item["text"]
-        
-        # --- Textacy ile ön temizleme ---
-        text = tprep.normalize_whitespace(text)
-        text = tprep.remove_urls(text)
-        text = tprep.remove_emails(text)
-        text = tprep.remove_numbers(text)
-        text = tprep.remove_accents(text)
-        text = tprep.replace_currency_symbols(text)
-        
-        # --- spaCy ile tokenization + lemmatization + stopword removal ---
-        doc = nlp(text)
+        text = item.get("text", "")
+
+        # --- TEXTACY NORMALIZE --- (regex yok)
+        text = normalize.whitespace(text)
+        text = normalize.unicode(text)
+        text = normalize.quotation_marks(text)
+        text = hyphen_to_space(text)
+
+        # --- spaCy lemma ve stopword temizleme ---
+        doc = nlp_model(text)
         temiz = [
             t.lemma_.lower() for t in doc
-            if t.is_alpha and not t.is_stop and t.pos_ in ["NOUN", "VERB", "ADJ"]
+            if t.is_alpha and not t.is_stop
         ]
         item["clean_text"] = " ".join(temiz)
-    
-    print("Metin temizleme tamamlandı.")
+
     return veri
 
-# TF-IDF + ANOMALİ TESPİTİ
+# ANOMALİ TESPİTİ
 def anomaly_tespiti(veri, contamination=0.05):
     texts = [item["clean_text"] for item in veri]
     vectorizer = TfidfVectorizer(max_features=2000)
@@ -65,21 +59,18 @@ def anomaly_tespiti(veri, contamination=0.05):
 
     for item, label in zip(veri, labels):
         item["is_anomaly"] = (label == -1)
-    print("Anomali tespiti tamamlandı.")
+
     return veri
 
-# SONUCU KAYDET
+# JSON KAYDET
 def temiz_json_kaydet(veri, cikti_klasoru):
-    cikti_yolu = os.path.join(cikti_klasoru, "all_clean_data.json")
-    with open(cikti_yolu, "w", encoding="utf-8") as f:
+    with open(os.path.join(cikti_klasoru, "all_clean_data.json"), "w", encoding="utf-8") as f:
         json.dump(veri, f, ensure_ascii=False, indent=2)
-    print(f"✅ Temiz veri kaydedildi: {cikti_yolu}")
 
 # ANA AKIŞ
 if __name__ == "__main__":
-    print("=== CLEAN DATA PIPELINE BAŞLIYOR ===")
+    nlp = spacy.load("en_core_web_lg")  # İngilizce makale için
     data = jsonl_dosyalarini_yukle(GIRIS_KLASORU)
-    data = metin_temizle(data)
-    data = anomaly_tespiti(data, contamination=0.05)
+    data = metin_temizle(data, nlp)
+    data = anomaly_tespiti(data)
     temiz_json_kaydet(data, CIKTI_KLASORU)
-    print("🎯 Tüm işlem tamamlandı! 'clean_data' klasörüne bakabilirsin.")
